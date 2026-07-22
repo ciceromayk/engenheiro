@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { Wall } from "@/lib/types";
 import { useProjectStore } from "@/lib/store/useProjectStore";
+import { DxfImportPanel } from "@/components/import/DxfImportPanel";
+import { ImageImportPanel } from "@/components/import/ImageImportPanel";
 
 function parseOffsetList(text: string): number[] {
   return text
@@ -18,25 +20,46 @@ interface WallEditorProps {
   walls: Wall[];
 }
 
+type Tab = "grid" | "table" | "import-dxf" | "import-image";
+
 export function WallEditor({ projectId, walls }: WallEditorProps) {
-  const [tab, setTab] = useState<"grid" | "table">("grid");
+  const [tab, setTab] = useState<Tab>("grid");
+  const appendWalls = useProjectStore((s) => s.appendWalls);
+  const replaceWalls = useProjectStore((s) => s.replaceWalls);
+
+  function handleImport(newWalls: Omit<Wall, "id">[], mode: "append" | "replace") {
+    if (mode === "replace") {
+      if (!confirm(`Substituir as ${walls.length} parede(s) atuais por ${newWalls.length} importada(s)?`)) {
+        return;
+      }
+      replaceWalls(projectId, newWalls.map((w, i) => ({ ...w, id: `wall-${i}` })));
+    } else {
+      appendWalls(projectId, newWalls);
+    }
+    setTab("table");
+  }
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800">
+      <div className="flex flex-wrap border-b border-zinc-200 dark:border-zinc-800">
         <TabButton active={tab === "grid"} onClick={() => setTab("grid")}>
           Modo grade rápido
         </TabButton>
         <TabButton active={tab === "table"} onClick={() => setTab("table")}>
           Paredes ({walls.length})
         </TabButton>
+        <TabButton active={tab === "import-dxf"} onClick={() => setTab("import-dxf")}>
+          Importar DXF
+        </TabButton>
+        <TabButton active={tab === "import-image"} onClick={() => setTab("import-image")}>
+          Importar imagem
+        </TabButton>
       </div>
       <div className="p-4">
-        {tab === "grid" ? (
-          <GridHelper projectId={projectId} />
-        ) : (
-          <WallTable projectId={projectId} walls={walls} />
-        )}
+        {tab === "grid" && <GridHelper projectId={projectId} />}
+        {tab === "table" && <WallTable projectId={projectId} walls={walls} />}
+        {tab === "import-dxf" && <DxfImportPanel onImport={handleImport} />}
+        {tab === "import-image" && <ImageImportPanel onImport={handleImport} />}
       </div>
     </div>
   );

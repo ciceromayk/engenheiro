@@ -26,6 +26,8 @@ interface ProjectStoreState {
   updateWall: (projectId: string, wallId: string, patch: Partial<Omit<Wall, "id">>) => void;
   removeWall: (projectId: string, wallId: string) => void;
   replaceWalls: (projectId: string, walls: Wall[]) => void;
+  /** Adiciona várias paredes de uma vez (ex.: importação DXF/imagem), preservando as existentes. */
+  appendWalls: (projectId: string, walls: Omit<Wall, "id">[]) => void;
 
   updateParams: (projectId: string, patch: Partial<StructuralParams>) => void;
 
@@ -119,6 +121,14 @@ export const useProjectStore = create<ProjectStoreState>()(
       replaceWalls: (projectId, walls) =>
         set((state) => ({
           projects: withProject(state.projects, projectId, (p) => ({ ...p, walls })),
+        })),
+
+      appendWalls: (projectId, walls) =>
+        set((state) => ({
+          projects: withProject(state.projects, projectId, (p) => ({
+            ...p,
+            walls: [...p.walls, ...walls.map((w) => ({ ...w, id: newId("wall") }))],
+          })),
         })),
 
       updateParams: (projectId, patch) =>

@@ -6,7 +6,9 @@ export interface Point {
   y: number;
 }
 
-/** Parede de arquitetura, informada via formulário estruturado (sem desenho livre). */
+export type WallSource = "manual" | "grid" | "dxf" | "image";
+
+/** Parede de arquitetura, informada via formulário estruturado, importação DXF ou traço sobre imagem. */
 export interface Wall {
   id: string;
   start: Point;
@@ -15,6 +17,8 @@ export interface Wall {
   thickness: number;
   /** Parede externa (fachada) ou interna */
   kind: "external" | "internal";
+  /** Origem do dado, para referência (não afeta o motor estrutural) */
+  source?: WallSource;
 }
 
 export type ColumnOrigin = "auto" | "manual";
