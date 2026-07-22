@@ -15,9 +15,12 @@ estrutural em concreto armado: pilares, vigas e lajes.
    - **Importação por imagem** (`src/lib/import/imageWallDetection.ts`) —
      envie uma foto ou planta escaneada, calibre a escala clicando em 2
      pontos com distância real conhecida, e rode a detecção automática de
-     paredes (transformada de Hough sobre bordas Sobel). O resultado pode
-     ser revisado, ligado/desligado por segmento, completado com traço
-     manual sobre a imagem e então importado.
+     paredes (transformada de Hough sobre bordas Sobel). Pares de linhas
+     paralelas entre ~8 e 22 cm de afastamento (as duas faces de uma
+     alvenaria) são reconhecidos e fundidos em uma única parede com a
+     espessura real medida (`src/lib/import/wallPairing.ts`). O resultado
+     pode ser revisado, ligado/desligado por segmento, completado com
+     traço manual sobre a imagem e então importado.
 2. **Geração automática da estrutura** (`src/lib/engine`):
    - As paredes são particionadas em sub-segmentos em cada cruzamento/T
      (`geometry.ts`), formando um grafo planar.

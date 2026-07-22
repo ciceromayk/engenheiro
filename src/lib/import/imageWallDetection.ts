@@ -236,14 +236,14 @@ function applyOrthoSnap(
   return seg;
 }
 
-type Segment = { x1: number; y1: number; x2: number; y2: number };
+export type Segment = { x1: number; y1: number; x2: number; y2: number };
 
-function segmentAngleRad(s: Segment): number {
+export function segmentAngleRad(s: Segment): number {
   return Math.atan2(s.y2 - s.y1, s.x2 - s.x1);
 }
 
 /** Diferença entre dois ângulos (radianos) tratando retas como não-orientadas (0° ≡ 180°). */
-function lineAngleDifferenceDeg(a: number, b: number): number {
+export function lineAngleDifferenceDeg(a: number, b: number): number {
   let diff = Math.abs(((a - b + Math.PI / 2) % Math.PI) - Math.PI / 2);
   diff = Math.abs(diff);
   return (Math.min(diff, Math.PI - diff) * 180) / Math.PI;

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectWallSegments, type DetectedSegment } from "@/lib/import/imageWallDetection";
+import { pairParallelWallLines } from "@/lib/import/wallPairing";
 import { cleanImportedWalls } from "@/lib/import/weldWalls";
 import type { Wall } from "@/lib/types";
 
@@ -20,11 +21,19 @@ interface CandidateSegment {
   y2: number;
   enabled: boolean;
   manual: boolean;
+  /** Espessura medida (m), quando o segmento veio de um par de linhas paralelas fundidas. */
+  thicknessM?: number;
 }
 
 type ClickMode = "none" | "calibrate" | "manual";
 
 const MAX_DETECTION_DIM = 1100;
+/**
+ * Comprimento mínimo (m) para manter um segmento detectado que não formou par.
+ * Junções de linhas duplas em cantos/cruzamentos costumam gerar fragmentos curtos
+ * e espúrios; um segmento sem par e muito curto quase sempre é ruído, não parede.
+ */
+const MIN_UNMATCHED_LENGTH_M = 0.4;
 
 export function ImageImportPanel({ onImport }: ImageImportPanelProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -128,7 +137,7 @@ export function ImageImportPanel({ onImport }: ImageImportPanelProps) {
 
   async function runDetection() {
     const img = imgElRef.current;
-    if (!img || naturalWidth === 0) return;
+    if (!img || naturalWidth === 0 || !pixelsPerMeter) return;
     setDetecting(true);
     try {
       const scale = Math.min(1, MAX_DETECTION_DIM / Math.max(naturalWidth, naturalHeight));
@@ -152,18 +161,43 @@ export function ImageImportPanel({ onImport }: ImageImportPanelProps) {
       );
 
       const backScale = 1 / scale;
-      const newSegments: CandidateSegment[] = detected.map((s) => ({
+      const detectedNatural = detected.map((s) => ({
         id: s.id,
         x1: s.x1 * backScale,
         y1: s.y1 * backScale,
         x2: s.x2 * backScale,
         y2: s.y2 * backScale,
-        enabled: true,
-        manual: false,
       }));
 
+      // Em plantas reais cada parede costuma ser desenhada como duas linhas paralelas
+      // (as duas faces). Reconhece esses pares e funde em uma única parede com a
+      // espessura real medida, em vez de importar duas paredes finas coladas.
+      const { paired, unmatched } = pairParallelWallLines(detectedNatural, pixelsPerMeter);
+
+      const pairedSegments: CandidateSegment[] = paired.map((p, i) => ({
+        id: `pair-${i}`,
+        x1: p.x1,
+        y1: p.y1,
+        x2: p.x2,
+        y2: p.y2,
+        enabled: true,
+        manual: false,
+        thicknessM: p.thicknessM,
+      }));
+      const unmatchedSegments: CandidateSegment[] = unmatched
+        .filter((s) => Math.hypot(s.x2 - s.x1, s.y2 - s.y1) / pixelsPerMeter >= MIN_UNMATCHED_LENGTH_M)
+        .map((s) => ({
+          id: s.id,
+          x1: s.x1,
+          y1: s.y1,
+          x2: s.x2,
+          y2: s.y2,
+          enabled: true,
+          manual: false,
+        }));
+
       // Mantém segmentos manuais já adicionados, substitui apenas os detectados automaticamente.
-      setSegments((prev) => [...prev.filter((s) => s.manual), ...newSegments]);
+      setSegments((prev) => [...prev.filter((s) => s.manual), ...pairedSegments, ...unmatchedSegments]);
     } finally {
       setDetecting(false);
     }
@@ -181,14 +215,14 @@ export function ImageImportPanel({ onImport }: ImageImportPanelProps) {
 
   const wallsToImport = useMemo(() => {
     if (!pixelsPerMeter) return [];
-    const thickness = Number(thicknessCm) / 100 || 0.15;
+    const defaultThickness = Number(thicknessCm) / 100 || 0.15;
     const raw = segments
       .filter((s) => s.enabled)
       .map((s, i) => ({
         id: `raw-${i}`,
         start: { x: s.x1 / pixelsPerMeter, y: (naturalHeight - s.y1) / pixelsPerMeter },
         end: { x: s.x2 / pixelsPerMeter, y: (naturalHeight - s.y2) / pixelsPerMeter },
-        thickness,
+        thickness: s.thicknessM ?? defaultThickness,
         kind,
         source: "image" as const,
       }));
@@ -386,6 +420,7 @@ export function ImageImportPanel({ onImport }: ImageImportPanelProps) {
                 ) : (
                   segments.map((s, i) => {
                     const lengthM = pixelsPerMeter ? Math.hypot(s.x2 - s.x1, s.y2 - s.y1) / pixelsPerMeter : 0;
+                    const kindLabel = s.manual ? "Manual" : s.thicknessM ? "Parede" : "Linha";
                     return (
                       <div key={s.id} className="flex items-center justify-between py-1 text-xs">
                         <label className="flex items-center gap-2">
@@ -394,7 +429,8 @@ export function ImageImportPanel({ onImport }: ImageImportPanelProps) {
                             checked={s.enabled}
                             onChange={() => toggleSegment(s.id)}
                           />
-                          {s.manual ? "Manual" : "Auto"} #{i + 1} · {lengthM.toFixed(2)} m
+                          {kindLabel} #{i + 1} · {lengthM.toFixed(2)} m
+                          {s.thicknessM && ` · esp. ${Math.round(s.thicknessM * 100)}cm`}
                         </label>
                         <button
                           onClick={() => removeSegment(s.id)}
@@ -409,10 +445,17 @@ export function ImageImportPanel({ onImport }: ImageImportPanelProps) {
               </div>
             </div>
 
+            <p className="text-xs text-zinc-400">
+              Pares de linhas paralelas entre 8 e 22 cm de distância são reconhecidos
+              automaticamente como as duas faces de uma parede (rotulados
+              &quot;Parede&quot;, com espessura medida). Linhas sem par usam a espessura
+              padrão abaixo.
+            </p>
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                  Espessura (cm)
+                  Espessura padrão (cm)
                 </label>
                 <input
                   value={thicknessCm}
